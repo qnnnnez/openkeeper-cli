@@ -30,7 +30,6 @@ install:
 	install -m 755 ok-stop "$(BIN_DIR)"
 	install -m 755 ok-connect "$(BIN_DIR)"
 	install -m 644 pppoe.conf "$(DATA_DIR)"
-	install -m 644 pap-secrets "$(DATA_DIR)"
 
 uninstall:
 	rm "$(BIN_DIR)"/dialnetkeeper -f
