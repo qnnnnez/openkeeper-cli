@@ -46,7 +46,7 @@ echo "=== 以下为高级配置，可以直接按回车使用默认配置 ==="
 setconfig OK_IFNAME "PPP 隧道的名字" ppp-ok
 setconfig OK_6TO4TUN "6to4 隧道名字" tun-ok6to4
 setconfig OK_METRIC "静态路由的跃点数" 0
-setconfig OK_RTTABLE "路由表名称" "local"
+setconfig OK_RTTABLE "路由表名称" "default"
 
 mv $new_config_name $CONFIG_NAME
 
