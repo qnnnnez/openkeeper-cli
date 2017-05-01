@@ -5,6 +5,13 @@ INSTALL_PATH=@prefix@/share/openkeeper
 TEMP_PATH=/var/cache/openkeeper
 CONFIG_PATH=/etc/openkeeper-cli
 
+
+function add-internal-route()
+{
+	ip route add  $1 dev $OK_ETH via $gateway_ip src $eth_ip metric $OK_METRIC table $OK_RTTABLE > /dev/null 2>&1
+}
+
+
 echo "重邮openkeeper 自编译`uname -m`版"
 
 if [ "0" != "$UID" ] ; then
@@ -51,48 +58,62 @@ fi
 
 #######################################################################################
 ppp_ip=`echo $ppp_ip | awk -F '/' '{print $1}'`
-OK_ETH_ip=`ip a show dev $OK_ETH | awk '/inet [12]/{print $2}'`
-OK_ETH_ip=`echo $OK_ETH_ip | awk -F '/' '{print $1}'`
+eth_cidr=`ip a show dev $OK_ETH | awk '/inet [12]/{print $2}'`
+eth_ip=`echo $eth_cidr | awk -F '/' '{print $1}'`
 
 #######################################################################################
-if [ "cqupt" == "$(echo $OK_USER | awk -F '@' '{print $2}')" ] ; then
-	gateway_ip=`ip r | awk '/default via/&&/dev '"$OK_ETH"'/{print $3}'`
-	if [ -n "$gateway_ip" ] ; then
-		#删除默认路由
-		ip route del  172.0.0.0/8 > /dev/null 2>&1
-		ip route del  202.202.0.0/16 > /dev/null 2>&1
+if [ "$OK_ADDROUTES" == "yes" ]; then
+    if [ "cqupt" == "$(echo $OK_USER | awk -F '@' '{print $2}')" ] ; then
+    	gateway_ip=`ip r | awk '/default via/&&/dev '"$OK_ETH"'/{print $3}'`
+    	if [ -n "$gateway_ip" ] ; then
+    		#删除默认路由
+    		ip route delete  172.0.0.0/8 > /dev/null 2>&1
+    		ip route delete  202.202.0.0/16 > /dev/null 2>&1
+            ip route delete  $eth_cidr > /dev/null 2>&1 #实际上同一子网的设备之间并不能互通
+    
+    		#添加内网路由
+            ip route add  $gateway_ip dev $OK_ETH src $eth_ip metric $OK_METRIC table $OK_RTTABLE
 
-		#添加内网路由
-		ip route add  172.16.0.0/12 dev $OK_ETH via $gateway_ip metric $OK_METRIC table $OK_RTTABLE> /dev/null 2>&1
-		ip route add  172.32.0.0/16 dev $OK_ETH via $gateway_ip metric $OK_METRIC table $OK_RTTABLE> /dev/null 2>&1
-		ip route add  172.33.0.0/16 dev $OK_ETH via $gateway_ip metric $OK_METRIC table $OK_RTTABLE> /dev/null 2>&1
-		ip route add  172.34.0.0/16 dev $OK_ETH via $gateway_ip metric $OK_METRIC table $OK_RTTABLE> /dev/null 2>&1
-		ip route add  202.202.32.0/20 dev $OK_ETH via $gateway_ip metric $OK_METRIC table $OK_RTTABLE> /dev/null 2>&1
-		ip route add  202.202.43.0/24 dev $OK_ETH via $gateway_ip metric $OK_METRIC table $OK_RTTABLE> /dev/null 2>&1
-		ip route add  202.202.45.0/24 dev $OK_ETH via $gateway_ip metric $OK_METRIC table $OK_RTTABLE> /dev/null 2>&1
-		ip route add  222.177.140.0/24 dev $OK_ETH via $gateway_ip metric $OK_METRIC table $OK_RTTABLE> /dev/null 2>&1
-	fi
-else
-	#非重邮的帐号默认不处理内网情况。
-	echo "非重邮学校可以根据相应内网情况自行添加内网路由。"
+    		add-internal-route 172.16.0.0/12
+    		add-internal-route 172.32.0.0/16
+    		add-internal-route 172.33.0.0/16
+    		add-internal-route 172.34.0.0/16
+    		add-internal-route 202.202.32.0/20
+    		add-internal-route 202.202.43.0/24
+    		add-internal-route 202.202.45.0/24
+    		add-internal-route 222.177.140.0/24
+
+            echo "内网路由已添加"
+    	fi
+    else
+    	#非重邮的帐号默认不处理内网情况。
+    	echo "非重邮学校可以根据相应内网情况自行添加内网路由。"
+    fi
+    
+    #变更默认路由
+    ip route del default
+    ip route add default dev $OK_IFNAME metric $OK_METRIC table $OK_RTTABLE
+
+    echo "默认路由已变更"
 fi
-
-#变更默认路由
-ip route add default dev $OK_IFNAME > /dev/null 2>&1
 
 #######################################################################################
 ## 添加6TO4隧道
-ip tunnel add $OK_6TO4TUN mode sit ttl 64 remote any local $ppp_ip
-ip link set dev $OK_6TO4TUN up
-## 添加IPv6地址
-ipv6_ip_p1=`echo $ppp_ip | awk -F'.' '{if ($1>16) {printf("%x",$1)} else {printf("0%x",$1)}}'`
-ipv6_ip_p2=`echo $ppp_ip | awk -F'.' '{if ($2>16) {printf("%x",$2)} else {printf("0%x",$2)}}'`
-ipv6_ip_p3=`echo $ppp_ip | awk -F'.' '{if ($3>16) {printf("%x",$3)} else {printf("0%x",$3)}}'`
-ipv6_ip_p4=`echo $ppp_ip | awk -F'.' '{if ($4>16) {printf("%x",$4)} else {printf("0%x",$4)}}'`
-ipv6_ip=2002:$ipv6_ip_p1$ipv6_ip_p2:$ipv6_ip_p3$ipv6_ip_p4::$ipv6_ip_p1$ipv6_ip_p2:$ipv6_ip_p3$ipv6_ip_p4
-ip -6 addr add $ipv6_ip/16 dev $OK_6TO4TUN
-echo "IPV6: $ipv6_ip"
-ip -6 route add default via ::192.88.99.1 dev $OK_6TO4TUN metric 1
+if [ "$OK_ENABLE_IPV6" == "yes" ]; then
+    ip tunnel add $OK_6TO4TUN mode sit ttl 64 remote any local $ppp_ip
+    ip link set dev $OK_6TO4TUN up
+    ## 添加IPv6地址
+    ipv6_ip_p1=`echo $ppp_ip | awk -F'.' '{if ($1>16) {printf("%x",$1)} else {printf("0%x",$1)}}'`
+    ipv6_ip_p2=`echo $ppp_ip | awk -F'.' '{if ($2>16) {printf("%x",$2)} else {printf("0%x",$2)}}'`
+    ipv6_ip_p3=`echo $ppp_ip | awk -F'.' '{if ($3>16) {printf("%x",$3)} else {printf("0%x",$3)}}'`
+    ipv6_ip_p4=`echo $ppp_ip | awk -F'.' '{if ($4>16) {printf("%x",$4)} else {printf("0%x",$4)}}'`
+    ipv6_ip=2002:$ipv6_ip_p1$ipv6_ip_p2:$ipv6_ip_p3$ipv6_ip_p4::$ipv6_ip_p1$ipv6_ip_p2:$ipv6_ip_p3$ipv6_ip_p4
+    ip -6 addr add $ipv6_ip/16 dev $OK_6TO4TUN
+    echo "IPV6: $ipv6_ip"
+    if [ "$OK_ADDROUTES" == "yes" ]; then
+        ip -6 route add default via ::192.88.99.1 dev $OK_6TO4TUN metric 1
+    fi
+fi
 
 echo "拨号结束，若关闭本终端，不会断开网络连接，断开网络连接请使用 ok-stop 命令"
 echo "处理完毕，若要使用其他账户登录，请用 ok-config 重新配置"
