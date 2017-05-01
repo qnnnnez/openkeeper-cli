@@ -92,7 +92,7 @@ if [ "$OK_ADDROUTES" == "yes" ]; then
     
     #变更默认路由
     ip route del default
-    ip route add default dev $OK_IFNAME metric $OK_METRIC table $OK_RTTABLE
+    ip route add default dev $OK_IFNAME src $ppp_ip metric $OK_METRIC table $OK_RTTABLE
 
     echo "默认路由已变更"
 fi
